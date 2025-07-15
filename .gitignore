@@ -1,0 +1,4 @@
+**/.aws-sam
+**/*.bak
+**/x.json
+.vscode/*

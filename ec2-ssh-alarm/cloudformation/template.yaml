@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 
+    - 'AWS::LanguageExtensions'
+    - 'AWS::Serverless-2016-10-31'
+Description: Creates the resources that implements policy that stops any Amazon EC2 instance accessed via SSH.
+Parameters:
+    EC2Name:
+        Type: String
+        Description: The name of the EC2
+    SubnetId:
+        Type: AWS::EC2::Subnet::Id
+        Description: The Subnet where to place the EC2.
+    SecurityGroupId:
+        Type: AWS::EC2::SecurityGroup::Id
+        Description: The the security group id.
+    AmiId:
+      Type : 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+      Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64'
+    LogGroupName:
+        Type: String
+        Description: The name of the log group
+        Default: '/aws/ec2/ssh-attempts'
+    LogLevel:
+        Type: String
+        Default: INFO
+        AllowedValues : ["INFO", "DEBUG"]
+        Description: The Lambda logger level. 
+    SNSTopic:
+        Type: String
+        Description: The SNS topic where the alarm will be sent.
+
+Metadata:
+    AWS::CloudFormation::Interface:
+      ParameterGroups: 
+        - Label: 
+            default: "Network Configuration"
+          Parameters: 
+            - SubnetId
+            - SecurityGroupId
+        - Label: 
+            default: "Amazon EC2 Configuration"
+          Parameters: 
+            - EC2Name
+            - AmiId      
+        - Label: 
+            default: "Log and Metric Configuration"
+          Parameters: 
+            - LogGroupName
+
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 128
+    LoggingConfig:
+      LogFormat: JSON
+    Environment:
+      Variables:
+        POWERTOOLS_SERVICE_NAME: ec2-ssh-alarm
+        POWERTOOLS_LOG_LEVEL: !Ref LogLevel
+
+Resources:
+  LambdaCWFilterSubscription:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: src/
+      Handler: index.lambda_handler
+      Runtime: python3.9
+      Architectures:
+      - x86_64
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Join 
+            - ''
+            - - 'arn:aws:sns:'
+              - !Ref 'AWS::Region'
+              - ':'
+              - !Ref 'AWS::AccountId'
+              - ':'
+              - !Ref SNSTopic
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ec2:DescribeInstances
+                - ec2:StopInstances
+              Resource: !Join 
+                - ''
+                - - 'arn:aws:ec2:'
+                  - !Ref 'AWS::Region'
+                  - ':'
+                  - !Ref 'AWS::AccountId'
+                  - ':instance/*'
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Join 
+                - ''
+                - - 'arn:aws:sns:'
+                  - !Ref 'AWS::Region'
+                  - ':'
+                  - !Ref 'AWS::AccountId'
+                  - ':'
+                  - !Ref SNSTopic
+              
+
+  LambdaResourcePolicy:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaCWFilterSubscription.Arn
+      Principal: logs.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !GetAtt CWLogGroup.Arn
+
+  EC2: 
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT5M     
+    Metadata:
+        AWS::CloudFormation::Init: 
+          config:
+            packages:
+              yum:
+                "amazon-cloudwatch-agent" : []
+                "rsyslog" : []
+            files:
+              "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+                content: !Sub |
+                  [cfn-auto-reloader-hook]
+                  triggers=post.update
+                  path=Resources.EC2.Metadata.AWS::CloudFormation::Init
+                  action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --region ${AWS::Region}
+                  runas=root
+                mode: "000400"
+                owner: "root"
+                group: "root"   
+              "/etc/cfn/cfn-hup.conf":
+                content: !Sub |
+                  [main]
+                  stack=${AWS::StackId}
+                  region=${AWS::Region}
+                mode: "000400"
+                owner: "root"
+                group: "root"
+              "/opt/aws/amazon-cloudwatch-agent/bin/config.json":
+                content: !Sub |
+                  {
+                      "agent": {
+                          "metrics_collection_interval": 60,
+                          "run_as_user": "cwagent"
+                      },
+                      "logs": {
+                          "logs_collected": {
+                              "files": {
+                                  "collect_list": [
+                                      {
+                                          "file_path": "/var/log/secure",
+                                          "log_group_class": "STANDARD",
+                                          "log_group_name": "${LogGroupName}",
+                                          "log_stream_name": "{instance_id}",
+                                          "retention_in_days": -1
+                                      }
+                                  ]
+                              }
+                          }
+                      },
+                      "metrics": {
+                          "aggregation_dimensions": [
+                              [
+                                  "InstanceId"
+                              ]
+                          ],
+                          "append_dimensions": {
+                              "AutoScalingGroupName": "${!aws:AutoScalingGroupName}",
+                              "ImageId": "${!aws:ImageId}",
+                              "InstanceId": "${!aws:InstanceId}",
+                              "InstanceType": "${!aws:InstanceType}"
+                          },
+                          "metrics_collected": {
+                              "disk": {
+                                  "measurement": [
+                                      "used_percent"
+                                  ],
+                                  "metrics_collection_interval": 60,
+                                  "resources": [
+                                      "*"
+                                  ]
+                              },
+                              "mem": {
+                                  "measurement": [
+                                      "mem_used_percent"
+                                  ],
+                                  "metrics_collection_interval": 60
+                              }
+                          }
+                      }
+                  }
+                mode: "000644"
+                owner: "root"
+                group: "root"
+            commands:
+              0setfacl0:
+                command: "setfacl -m u:cwagent:rx /var/log/secure"
+                test: "test -f /var/log/secure"
+              1startcwagent:
+                command: "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json"
+                test: "test -f /opt/aws/amazon-cloudwatch-agent/bin/config.json"
+              2testfacl:
+                command: "getfacl -p  /var/log/secure  | grep \"user:cwagent:r-x\""
+              3testcwagent:
+                command: "/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a  status | grep status | grep running"
+            services:
+              systemd:
+                rsyslog:  
+                  enabled: 'true'
+                  ensureRunning: 'true'
+              sysvinit:
+                cfn-hup:
+                  enabled: 'true'
+                  ensureRunning: 'true'
+                  files:
+                    - "/etc/cfn/cfn-hup.conf"
+                    - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"                 
+    Properties:
+        InstanceType: "t2.micro"
+        ImageId: !Ref AmiId
+        IamInstanceProfile: !Ref EC2InstanceProfile        
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetId:  !Ref SubnetId
+        Tags: 
+            - Key: Name
+              Value: !Ref EC2Name
+        UserData: 
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash -xe
+
+              yum install -y aws-cfn-bootstrap
+
+              /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --region ${AWS::Region}
+
+              /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2 --region ${AWS::Region}
+   
+  EC2InstanceProfile:          
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: 
+        - !Ref EC2Role
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', ['ec2-ssh-alarm', 'role']]  
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Principal:
+              Service: ec2.amazonaws.com
+            Effect: Allow
+            Sid: ''
+      ManagedPolicyArns:
+           - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+           - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+  CWLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      RetentionInDays: 1
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+
+  CWLogSubscriptionFilter:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      DestinationArn: !GetAtt LambdaCWFilterSubscription.Arn
+      FilterName: SshAccessFilter
+      FilterPattern: '[mm, dd, time, ip, cmd, pam="pam_unix(sshd:session):", text1=session, text2="opened for user*" ]'
+      LogGroupName: !Ref LogGroupName
+
+
+
