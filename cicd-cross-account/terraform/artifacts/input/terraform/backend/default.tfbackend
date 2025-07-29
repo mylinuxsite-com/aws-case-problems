@@ -1,0 +1,2 @@
+bucket = "dummy-bucket"
+key    = "codepipeline-x-accounts.tfstate"

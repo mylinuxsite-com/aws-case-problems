@@ -1,0 +1,36 @@
+version: 0.2
+
+env:
+  variables:
+    release: "AmazonLinux"
+    tf_plan_destroy: ""
+
+phases:
+
+  install:
+    commands:
+      - sudo dnf install -y dnf-plugins-core
+      - sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/$release/hashicorp.repo
+      - sudo dnf install -y terraform
+
+  pre_build:
+    commands:
+      - cd terraform
+      - aws sts get-caller-identity
+      - terraform init --backend-config="bucket=$TFSTATE_BUCKET_NAME" --backend-config="key=$TFSTATE_FILE_NAME"
+      - terraform validate    
+
+  build:
+    commands:
+      - CROSS_ACCT_TOKENS=$(aws sts assume-role --role-arn $TARGET_ROLE_ARN --role-session-name $TARGET_ROLE_SESSION --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)
+      - export AWS_ACCESS_KEY_ID=$(echo $CROSS_ACCT_TOKENS | cut -d' ' -f1)
+      - export AWS_SECRET_ACCESS_KEY=$(echo $CROSS_ACCT_TOKENS | cut -d' ' -f2)
+      - export AWS_SESSION_TOKEN=$(echo $CROSS_ACCT_TOKENS | cut -d' ' -f3) 
+      - aws sts get-caller-identity   
+      - if [ "$TF_ACTION" == "destroy" ]; then tf_plan_destroy="-destroy"; fi
+      - terraform plan -input=false $tf_plan_destroy
+      - terraform $TF_ACTION -auto-approve -input=false
+
+  post_build:
+    commands:
+      - echo terraform apply completed on `date`
