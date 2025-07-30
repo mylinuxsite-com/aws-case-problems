@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "this" {
   statement {
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:sts::${var.target_account}:assumed-role/${var.target_account_role}/${var.target_account_role_session}"]
+      identifiers = ["arn:aws:iam::${var.target_account}:root"]
     }
 
     actions = [
@@ -31,6 +31,13 @@ data "aws_iam_policy_document" "this" {
       aws_s3_bucket.this[var.tfstate_bucket_suffix].arn,
       "${aws_s3_bucket.this[var.tfstate_bucket_suffix].arn}/${var.tfstate_file_name}"
     ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:PrincipalArn"
+
+      values = ["arn:aws:iam::${var.target_account}:role/${var.target_account_role}"]
+    }    
   }
 }
 
@@ -57,9 +64,4 @@ resource "aws_s3_object" "this" {
 
   etag = data.archive_file.this.output_md5
 
-  provisioner "local-exec" {
-    when        = destroy
-    working_dir = "${path.module}/.workdir"
-    command     = "rm *.zip"
-  }
 }

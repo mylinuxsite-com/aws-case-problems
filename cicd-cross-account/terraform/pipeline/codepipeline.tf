@@ -69,5 +69,11 @@ resource "aws_codepipeline" "this" {
   depends_on = [
     aws_s3_object.this
   ]
+
+  provisioner "local-exec" {
+    when        = destroy
+    working_dir = "${path.module}/.workdir"
+    command     = "rm *.zip"
+  }
 }
 
