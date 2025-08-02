@@ -4,4 +4,6 @@
 **/.workdir
 **/terraform.tfstate*
 **/x.json
+**/artifacts/input/terraform/terraform.tfvars
+**/artifacts/input/cloudformation/parameters.json
 .vscode/*

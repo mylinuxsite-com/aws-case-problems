@@ -29,7 +29,7 @@ variable "cicd_account" {
 
 variable "pipeline_name" {
   type        = string
-  default     = "Terraform-Cross-Account"
+  default     = "TerraformCrossAccount"
   description = "The name of the pipeline."
 }
 

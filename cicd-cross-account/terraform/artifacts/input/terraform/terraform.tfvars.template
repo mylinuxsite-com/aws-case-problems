@@ -1,0 +1,4 @@
+subnet_id      = "subnet-xxxx"
+security_group = "sg-xxxx"
+
+

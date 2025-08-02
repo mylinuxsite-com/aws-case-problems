@@ -35,7 +35,7 @@ variable "target_account_role_session" {
 
 variable "pipeline_name" {
   type        = string
-  default     = "Terraform-Cross-Account"
+  default     = "TerraformCrossAccount"
   description = "The name of the pipeline."
 }
 
