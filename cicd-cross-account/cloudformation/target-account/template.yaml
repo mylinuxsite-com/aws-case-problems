@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 
+    - 'AWS::LanguageExtensions'
+Description: Creates the an CloudFormation execution role and Cross-account role.
+
+Parameters:
+    CfnRoleName:
+        Type: String
+        Description: The name of CloudFormation execution role.
+        Default: cfn-role
+    CrossAccountRoleName:
+        Type: String
+        Description: The name of Cross-account role. The CiCd service role will assume this role.
+        Default: cross-account-role
+    CiCdAccount:
+        Type: String
+        Description: The CiCd account.
+    CiCdPipelineName:
+        Type: String
+        Description: "The CiCd pipeline name. The trusted CiCd service role will be constructed as follows: <CiCdPipelineName>-CodePipelineRole."
+        Default: CfnCrossAccount
+    CiCdBucketName:
+        Type: String
+        Description: The CiCd S3 bucket name that the CfnRoleName needs to access.
+        Default: cfn-cross-account-cicd
+
+
+
+Resources:
+  CfnExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref CfnRoleName
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  CfnExecutionRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${CfnRoleName}-policy"
+      Roles:
+        - !Ref CfnExecutionRole  
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+          - Sid: Ec2Access
+            Effect: Allow
+            Action: ec2:*
+            Resource: "*"
+
+          - Sid: CfnAccess
+            Effect: Allow
+            Action: cloudformation:*
+            Resource: "*"
+
+          - Sid: SsmAccess
+            Effect: Allow
+            Action: ssm:GetParameters
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/*"
+
+          - Sid: IamAccess
+            Effect: Allow
+            Action: 
+              - iam:CreatePolicy
+              - iam:ListPolicies
+              - iam:CreateInstanceProfile
+              - iam:GetRole
+              - iam:ListRoles
+              - iam:CreateRole
+              - iam:ListRolePolicies
+              - iam:GetRolePolicy
+              - iam:ListAttachedRolePolicies
+              - iam:ListInstanceProfilesForRole
+              - iam:ListInstanceProfiles
+              - iam:DeleteRole
+              - iam:DeleteInstanceProfile
+              - iam:DeletePolicy
+              - iam:DeleteRolePolicy
+              - iam:AttachRolePolicy
+              - iam:GetInstanceProfile
+              - iam:AddRoleToInstanceProfile
+              - iam:RemoveRoleFromInstanceProfile
+              - iam:DetachRolePolicy
+              - iam:PassRole
+            Resource: "*"
+
+  CrossAccountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref CrossAccountRoleName
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              AWS:  
+                - !Sub "arn:aws:iam::${CiCdAccount}:role/${CiCdPipelineName}-CodePipelineRole"
+            Action:
+              - sts:AssumeRole   
+
+  CrossAccountRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${CrossAccountRoleName}-policy"
+      Roles:
+        - !Ref CrossAccountRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+          - Sid: CfnAccess
+            Effect: Allow
+            Action: cloudformation:*
+            Resource: "*"
+
+          - Sid: IamAccess
+            Effect: Allow
+            Action: 
+              - iam:PassRole
+            Resource: "*"
+          
+          - Sid: S3Access
+            Effect: Allow
+            Action: 
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+              - s3:DeleteObject
+            Resource:
+              - !Sub "arn:aws:s3:::${CiCdBucketName}"
+              - !Sub "arn:aws:s3:::${CiCdBucketName}/*"
+          

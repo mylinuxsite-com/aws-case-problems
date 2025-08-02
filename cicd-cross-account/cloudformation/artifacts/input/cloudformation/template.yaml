@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 
+    - 'AWS::LanguageExtensions'
+Description: Creates the an Amazon EC2 instance.
+Parameters:
+    EC2Name:
+        Type: String
+        Description: The name of the EC2
+        Default: MyCrossAccountEC2
+    SubnetId:
+        Type: AWS::EC2::Subnet::Id
+        Description: The Subnet where to place the EC2.
+    SecurityGroupId:
+        Type: AWS::EC2::SecurityGroup::Id
+        Description: The the security group id.
+    AmiId:
+      Type : 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+      Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64'
+
+Metadata:
+    AWS::CloudFormation::Interface:
+      ParameterGroups: 
+        - Label: 
+            default: "Network Configuration"
+          Parameters: 
+            - SubnetId
+            - SecurityGroupId
+        - Label: 
+            default: "Amazon EC2 Configuration"
+          Parameters: 
+            - EC2Name
+            - AmiId      
+
+Resources:
+  EC2: 
+    Type: AWS::EC2::Instance               
+    Properties:
+        InstanceType: "t2.micro"
+        ImageId: !Ref AmiId
+        IamInstanceProfile: !Ref EC2InstanceProfile        
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetId:  !Ref SubnetId
+        Tags: 
+            - Key: Name
+              Value: !Ref EC2Name
+
+  EC2InstanceProfile:          
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: 
+        - !Ref EC2Role
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join ['-', ['ec2-ssh-alarm', 'role']]  
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Principal:
+              Service: ec2.amazonaws.com
+            Effect: Allow
+            Sid: ''
+      ManagedPolicyArns:
+           - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+

@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 
+    - 'AWS::LanguageExtensions'
+Description: Creates the CodePipeline that will deploy a CloudFormation template to another account.
+
+Parameters:
+    CfnRoleName:
+        Type: String
+        Description: The name of this CloudFormation execution role.
+        Default: cfn-role
+    TargetAccountCfnRoleName:
+        Type: String
+        Description: The name of target account CloudFormation execution role.
+        Default: cfn-role
+    TargetAccountRoleName:
+        Type: String
+        Description: The name of target account cross-account role. The CodePipeline service role will assume this role.
+        Default: cross-account-role
+    TargetAccount:
+        Type: String
+        Description: The target account.
+    CiCdBucketName:
+        Type: String
+        Description: The CiCd S3 bucket name that the CfnRoleName needs to access.
+        Default: cfn-cross-account-cicd
+    InputArtifact:
+        Type: String
+        Description: The name of the input artifact.
+        Default: input-artifact.zip          
+        
+Resources:
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-CodePipelineRole"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  CodePipelineRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${AWS::StackName}-policy"
+      Roles:
+        - !Ref CodePipelineRole  
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+          - Sid: Sts
+            Effect: Allow
+            Action: 
+              - sts:AssumeRole
+            Resource: 
+              - !Sub "arn:aws:iam::${TargetAccount}:role/${TargetAccountRoleName}"
+
+          - Sid: CWLog
+            Effect: Allow
+            Action: 
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: 
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codepipeline/${AWS::StackName}"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codepipeline/${AWS::StackName}:log-stream:*"            
+
+          - Sid: CiCdS3Bucket
+            Effect: Allow
+            Action:
+              - s3:GetBucketVersioning
+              - s3:GetBucketAcl
+              - s3:GetBucketLocation
+              - s3:PutObject
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource: 
+              - !Sub "arn:aws:s3:::${CiCdBucketName}"
+              - !Sub "arn:aws:s3:::${CiCdBucketName}/*"
+
+            Condition:
+              StringEquals: 
+                "aws:ResourceAccount": !Ref 'AWS::AccountId'
+
+  S3CiCdBucket:
+    Type: AWS::S3::Bucket  
+    Properties:
+      BucketName: !Sub "${CiCdBucketName}"
+      VersioningConfiguration:
+        Status: Enabled
+
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref AWS::StackName    
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      PipelineType: V2
+      ExecutionMode: QUEUED
+      ArtifactStore:
+        Location: !Ref S3CiCdBucket
+        Type: S3
+      Variables:
+        - Name: TARGET_ROLE_ARN
+          DefaultValue: !Sub "arn:aws:iam::${TargetAccount}:role/${TargetAccountRoleName}"
+        - Name: BUILD_ACTION
+          DefaultValue: create-stack
+        - Name: BUILD_STACK_NAME
+          DefaultValue: !Sub "${AWS::StackName}-Build"
+        - Name: CFN_ROLE_ARN
+          DefaultValue: !Sub "arn:aws:iam::${TargetAccount}:role/${CfnRoleName}"
+      Stages:      
+        - Name: Source
+          Actions:
+            - Name: S3Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: S3
+                Version: 1
+              Configuration: 
+                S3Bucket: !Ref CiCdBucketName
+                S3ObjectKey: !Ref InputArtifact
+              OutputArtifacts:
+                - Name: SourceArtifact
+
+        - Name: Build
+          Actions:
+            - Name: BuildCommand
+              ActionTypeId:
+                Category: Compute
+                Owner: AWS
+                Provider: Commands
+                Version: 1
+              Commands:
+                - export TARGET_ROLE_ARN=#{variables.TARGET_ROLE_ARN}
+                - export ACTION=#{variables.BUILD_ACTION}
+                - export STACK_NAME=#{variables.BUILD_STACK_NAME}
+                - export CFN_ROLE_ARN=#{variables.CFN_ROLE_ARN}
+                - CROSS_ACCT_TOKENS=$(aws sts assume-role --role-arn $TARGET_ROLE_ARN --role-session-name CodePipeline --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text)
+                - export AWS_ACCESS_KEY_ID=$(echo $CROSS_ACCT_TOKENS | cut -d' ' -f1)
+                - export AWS_SECRET_ACCESS_KEY=$(echo $CROSS_ACCT_TOKENS | cut -d' ' -f2)
+                - export AWS_SESSION_TOKEN=$(echo $CROSS_ACCT_TOKENS | cut -d' ' -f3)              
+                - aws sts get-caller-identity   
+                - ls -lta artifacts/input
+                - if [ "$ACTION" == "delete-stack" ]; then aws cloudformation $ACTION --stack-name $STACK_NAME; fi
+                - if [ ! "$ACTION" == "delete-stack" ]; then aws cloudformation $ACTION --stack-name $STACK_NAME --role-arn $CFN_ROLE_ARN --template-body file://artifacts/input/cloudformation/template.yaml --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM" "CAPABILITY_AUTO_EXPAND" --parameters file://artifacts/input/cloudformation/parameters.json; fi
+              InputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                EnvironmentType: LINUX_CONTAINER
+                ComputeType: BUILD_GENERAL1_SMALL
+
+Outputs:
+  S3CiCdBucket:
+    Description: The name of the S3 CiCd bucket.
+    Value: !Ref S3CiCdBucket
+  InputArtifact:
+    Description: The name of the input artifact
+    Value: !Ref InputArtifact
+                  

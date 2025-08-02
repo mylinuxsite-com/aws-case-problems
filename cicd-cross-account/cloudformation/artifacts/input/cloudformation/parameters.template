@@ -1,0 +1,14 @@
+[
+    {
+      "ParameterKey": "EC2Name",
+      "ParameterValue": "MyCrossAccountEC2"
+    },
+    {
+      "ParameterKey": "SubnetId",
+      "ParameterValue": "subnet-xxxx"
+    },
+    {
+      "ParameterKey": "SecurityGroupId",
+      "ParameterValue": "sg-xxxx"
+    }
+  ]
