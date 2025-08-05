@@ -1,6 +1,7 @@
 #!/bin/bash
 ArtifactDir=artifacts/input
 Action=create-stack
+AwaitAction=stack-create-complete
 
 while getopts "uds:t:c:g:n:" opt
 do
@@ -31,6 +32,7 @@ do
       ;;            
     u)
       Action=update-stack
+      AwaitAction=stack-update-complete
       echo "Updating stacks..."
       ;;
 
@@ -106,26 +108,8 @@ aws cloudformation $Action --stack-name $stack_name \
 --parameters ParameterKey=TargetAccount,ParameterValue=$target_acct_no \
 --profile $cicd_profile
 
-echo "Awaiting for the stacks creation/update to complete..." 
-if [ "$Action" == "create-stack" ] 
-then 
-   aws cloudformation wait stack-create-complete --stack-name $stack_name --profile $cicd_profile
-else
-   aws cloudformation wait stack-update-complete --stack-name $stack_name --profile $cicd_profile
-fi
-
-s3_cicd_bucket=$(aws cloudformation describe-stacks --profile $cicd_profile --stack-name $stack_name  --query "Stacks[0].Outputs[?OutputKey=='S3CiCdBucket'].OutputValue" --output text)
-input_artifact=$(aws cloudformation describe-stacks --profile $cicd_profile --stack-name $stack_name --query "Stacks[0].Outputs[?OutputKey=='InputArtifact'].OutputValue" --output text)
-
-echo "Creating the build parameters"
-sed -e "s/subnet-xxxx/$build_subnet_id/g" -e "s/sg-xxxx/$build_security_group_id/g" $ArtifactDir/parameters.template > $ArtifactDir/parameters.json
-
-echo "Uploading the input artifact $input_artifact to $s3_cicd_bucket S3"
-
-input_artifact_zip=/tmp/$input_artifact
-
-zip -r $input_artifact_zip $ArtifactDir
-aws s3 cp $input_artifact_zip s3://$s3_cicd_bucket --profile $cicd_profile
+echo "Awaiting for the stack creation/update to complete..." 
+aws cloudformation wait $AwaitAction --stack-name $stack_name --profile $cicd_profile
 
 echo "Deploying target account pipeline template..."
 aws cloudformation $Action --stack-name $stack_name \
@@ -133,6 +117,20 @@ aws cloudformation $Action --stack-name $stack_name \
 --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM" "CAPABILITY_AUTO_EXPAND" \
 --parameters ParameterKey=CiCdAccount,ParameterValue=$cicd_acct_no ParameterKey=CiCdPipelineName,ParameterValue=$stack_name ParameterKey=CiCdBucketName,ParameterValue=$s3_cicd_bucket  \
 --profile $target_acct_profile
+
+echo "Awaiting for the stack creation/update to complete..." 
+aws cloudformation wait $AwaitAction --stack-name $stack_name --profile $target_acct_profile
+
+s3_cicd_bucket=$(aws cloudformation describe-stacks --profile $cicd_profile --stack-name $stack_name  --query "Stacks[0].Outputs[?OutputKey=='S3CiCdBucket'].OutputValue" --output text)
+input_artifact=$(aws cloudformation describe-stacks --profile $cicd_profile --stack-name $stack_name --query "Stacks[0].Outputs[?OutputKey=='InputArtifact'].OutputValue" --output text)
+
+echo "Creating the build parameters"
+sed -e "s/subnet-xxxx/$build_subnet_id/g" -e "s/sg-xxxx/$build_security_group_id/g" $ArtifactDir/cloudformation/parameters.template > $ArtifactDir/parameters.json
+
+echo "Uploading the input artifact $input_artifact to $s3_cicd_bucket S3"
+input_artifact_zip=/tmp/$input_artifact
+zip -r $input_artifact_zip $ArtifactDir
+aws s3 cp $input_artifact_zip s3://$s3_cicd_bucket --profile $cicd_profile
 
 
 
