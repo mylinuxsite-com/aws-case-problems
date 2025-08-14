@@ -1,0 +1,14 @@
+{
+  "cc-api-provider:account=288761731316:exactIdentifier=AWSReservedSSO_Terraform_41c3b3de12cd278b:propertiesToReturn.0=Arn:region=us-east-1:typeName=AWS$:$:IAM$:$:Role": [
+    {
+      "Arn": "arn:aws:iam::288761731316:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_Terraform_41c3b3de12cd278b",
+      "Identifier": "AWSReservedSSO_Terraform_41c3b3de12cd278b"
+    }
+  ],
+  "cc-api-provider:account=288761731316:exactIdentifier=AWSReservedSSO_Terraform_41c3b3de12cd278b:propertiesToReturn.0=Arn:region=us-east-2:typeName=AWS$:$:IAM$:$:Role": [
+    {
+      "Arn": "arn:aws:iam::288761731316:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_Terraform_41c3b3de12cd278b",
+      "Identifier": "AWSReservedSSO_Terraform_41c3b3de12cd278b"
+    }
+  ]
+}

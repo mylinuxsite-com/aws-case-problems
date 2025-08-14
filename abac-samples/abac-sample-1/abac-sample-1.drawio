@@ -1,0 +1,60 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36" version="28.0.9">
+  <diagram name="Page-1" id="NbCwn2CSyzdZmiXig8vF">
+    <mxGraphModel dx="983" dy="523" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-7" value="AWS Account" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;html=1;whiteSpace=wrap;fontSize=12;fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_account;verticalAlign=top;align=left;spacingLeft=30;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="240" y="200" width="400" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-36" value="Assume ABACRole2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=10;" edge="1" parent="mAFcs0yhqNVW6DX4OOKV-7" source="mAFcs0yhqNVW6DX4OOKV-19" target="mAFcs0yhqNVW6DX4OOKV-9">
+          <mxGeometry x="0.4173" y="10" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="54" y="220" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-38" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="mAFcs0yhqNVW6DX4OOKV-7" source="mAFcs0yhqNVW6DX4OOKV-19" target="mAFcs0yhqNVW6DX4OOKV-27">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="40" y="359" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-43" value="aws cp object" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="mAFcs0yhqNVW6DX4OOKV-38">
+          <mxGeometry x="0.5807" y="1" relative="1" as="geometry">
+            <mxPoint x="-7" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-19" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.user;" vertex="1" parent="mAFcs0yhqNVW6DX4OOKV-7">
+          <mxGeometry x="30" y="78" width="48" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-27" value="" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#7AA116;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.bucket_with_objects;" vertex="1" parent="mAFcs0yhqNVW6DX4OOKV-7">
+          <mxGeometry x="187" y="320" width="75" height="78" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-42" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="mAFcs0yhqNVW6DX4OOKV-7" source="mAFcs0yhqNVW6DX4OOKV-9" target="mAFcs0yhqNVW6DX4OOKV-27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-9" value="ABACRole2" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.role;" vertex="1" parent="mAFcs0yhqNVW6DX4OOKV-7">
+          <mxGeometry x="185" y="200" width="78" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-11" value="Role2 Tag&amp;nbsp;&lt;br&gt;(team: abac)" style="sketch=0;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;fillColor=#005F4B;labelPosition=right;verticalLabelPosition=middle;verticalAlign=middle;align=left;outlineConnect=0;shape=mxgraph.veeam2.tag;" vertex="1" parent="mAFcs0yhqNVW6DX4OOKV-7">
+          <mxGeometry x="270" y="230" width="28.000000000000004" height="28.000000000000004" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-29" value="Object Tag&lt;div&gt;(team: abac)&lt;/div&gt;" style="sketch=0;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;fillColor=#005F4B;labelPosition=right;verticalLabelPosition=middle;verticalAlign=middle;align=left;outlineConnect=0;shape=mxgraph.veeam2.tag;" vertex="1" parent="mAFcs0yhqNVW6DX4OOKV-7">
+          <mxGeometry x="270" y="360" width="28.000000000000004" height="28.000000000000004" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-37" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="mAFcs0yhqNVW6DX4OOKV-7" source="mAFcs0yhqNVW6DX4OOKV-8" target="mAFcs0yhqNVW6DX4OOKV-19">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-8" value="ABACRole1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#DD344C;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.role;" vertex="1" parent="mAFcs0yhqNVW6DX4OOKV-7">
+          <mxGeometry x="100" y="30" width="78" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="mAFcs0yhqNVW6DX4OOKV-14" value="Tag (team:abac)" style="sketch=0;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;fillColor=#005F4B;labelPosition=right;verticalLabelPosition=middle;verticalAlign=middle;align=left;outlineConnect=0;shape=mxgraph.veeam2.tag;" vertex="1" parent="mAFcs0yhqNVW6DX4OOKV-7">
+          <mxGeometry x="180" y="60" width="28.000000000000004" height="28.000000000000004" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

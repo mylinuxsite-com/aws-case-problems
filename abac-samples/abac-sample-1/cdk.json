@@ -1,0 +1,97 @@
+{
+  "app": "python3 app.py",
+  "watch": {
+    "include": [
+      "**"
+    ],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "requirements*.txt",
+      "source.bat",
+      "**/__init__.py",
+      "**/__pycache__",
+      "tests"
+    ]
+  },
+  "context": {
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": [
+      "aws",
+      "aws-cn"
+    ],
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/core:validateSnapshotRemovalPolicy": true,
+    "@aws-cdk/core:enablePartitionLiterals": true,
+    "@aws-cdk/customresources:installLatestAwsSdkDefault": false,    
+    "@aws-cdk/aws-iam:importedRoleStackSafeDefaultPolicyName": true,
+    "@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy": true,
+    "@aws-cdk/aws-kms:aliasNameRef": true,
+    "@aws-cdk/core:includePrefixInUniqueNameGeneration": true,
+    "@aws-cdk/aws-kms:reduceCrossAccountRegionPolicyScope": true,
+    "@aws-cdk/aws-s3:keepNotificationInImportedBucket": false,
+    "@aws-cdk/core:cfnIncludeRejectComplexResourceUpdateCreatePolicyIntrinsics": true,
+    "@aws-cdk/aws-iam:oidcRejectUnauthorizedConnections": true,
+    "@aws-cdk/core:enableAdditionalMetadataCollection": true,
+    "@aws-cdk/aws-s3:setUniqueReplicationRoleName": true,
+    "step_no" :"step_1",
+    "stack_params": {
+      "step_1": {
+        "tags": {
+          "ABACRole1":{},
+          "ABACRole2":{},
+          "s3_bucket": {}
+        }
+      },
+      "step_2": {
+        "tags": {
+          "ABACRole1":{"team":"abac"},
+          "ABACRole2":{"team":"abac"},
+          "s3_bucket": {}
+        }
+      },      
+      "step_3": {
+        "tags": {
+          "ABACRole1":{"team":"abac"},
+          "ABACRole2":{"team":"abac"},
+          "s3_bucket":{"team":"abac"}
+        }
+      },         
+      "iam_roles": {
+        "ABACRole1": {
+          "description": "This is the description for ABACRole1",
+          "assumed_by" : "{caller-identity}",
+          "policy" : {
+            "actions": [
+              "sts:AssumeRole"
+            ],
+            "resources": ["*"],
+            "conditions": {}
+          }          
+        },
+        "ABACRole2": {
+          "description": "This is the description",
+          "assumed_by" : "root",
+          "conditions": {
+            "ForAnyValue:StringEquals": {
+              "aws:ResourceTag/team": "${aws:PrincipalTag/team}"
+            }
+          },
+          "policy" : {
+            "actions": [
+              "s3:Get*",
+              "s3:List*",
+              "s3:Describe*"
+            ],
+            "resources": ["*"],
+            "conditions": {
+              "ForAnyValue:StringEquals": {
+                "s3:ExistingObjectTag/team": "${aws:PrincipalTag/team}"
+              }                  
+            }
+          }
+        }
+      }
+    }
+  }
+}
