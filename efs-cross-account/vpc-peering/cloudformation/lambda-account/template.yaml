@@ -45,17 +45,6 @@ Parameters:
         Description: The EF Access Point that the Lambda will mount.
         AllowedPattern: "^(fsap-[0-9a-fA-F]{4,})$"  
 
-# Globals:
-#   Function:
-#     Timeout: 3
-#     MemorySize: 128
-#     LoggingConfig:
-#       LogFormat: JSON
-#     Environment:
-#       Variables:
-#         POWERTOOLS_SERVICE_NAME: efs-x-acct-vpc-peering
-#         POWERTOOLS_LOG_LEVEL: !Ref LogLevel
-
 Mappings:
     AZToCidrMap:
         AZToCidr:
@@ -65,15 +54,6 @@ Mappings:
             "az4": 3
             "az5": 4
             "az6": 5
-
-# Rules:
-#   MaxAzIds:
-#     RuleCondition: !Not [!Equals [!Ref AZIds,""]]
-#     Assertions:
-#       - Assert: !Equals 
-#           - Fn::Length: !Split [",",!Ref AZIds]
-#           - 2
-#         AssertDescription: 'AZIds must be = 2'    
 
 Resources:
     LambdaVPC:
@@ -160,31 +140,27 @@ Resources:
 
     # ForEach with SAM is not supported: https://github.com/aws/aws-sam-cli/issues/5647
     # 'Fn::ForEach::Subnets':
-    #   - AZPrefix
-    #   - ['a','b'] # !Ref AZPrefixes
-    #   - 'LambdaSubnet${AZPrefix}':
-    #       Type: 'AWS::EC2::Subnet'
-    #       Properties:
-    #           VpcId: !Ref LambdaVPC
-    #           CidrBlock: !Select
-    #               - !FindInMap [AZToCidrMap,AZToCidr,!Sub '${AZPrefix}']
-    #               - !Cidr
-    #                   - !Ref VPCCidr
-    #                   - 6
-    #                   - 8            
-    #           AvailabilityZone: !Sub "${AWS::Region}${AZPrefix}"
-    #           Tags: 
-    #               - Key: Name
-    #                 Value: 
-    #                   !Join ['-',[!Ref VpcName,!Sub "${AZPrefix}"]]
-
-    #     'LambdaRtbSubAssoc${AZPrefix}':
-    #       Type: 'AWS::EC2::SubnetRouteTableAssociation'
-    #       Properties:
-    #           RouteTableId: !Ref LambdaRouteTable
-    #           SubnetId: !GetAtt 
-    #               - Fn::Sub: 'LambdaSubnet${AZPrefix}'
-    #               - SubnetId            
+    #     - AZId
+    #     - !Ref AZIds
+    #     - 'EFSSubnet&{AZId}':
+    #         Type: 'AWS::EC2::Subnet'
+    #         Properties:
+    #             VpcId: !Ref EFSVPC
+    #             CidrBlock: !Select
+    #                 - !FindInMap 
+    #                   - AZToCidrMap
+    #                   - AZToCidr
+    #                   - !Select [1, !Split ["-", !Sub "${AZId}"]]
+    #                 - !Cidr
+    #                     - !Ref VPCCidr
+    #                     - 6
+    #                     - 8            
+    #             AvailabilityZoneId: !Sub "${AZId}"
+    #             Tags: 
+    #                 - Key: Name
+    #                   Value: 
+    #                     !Join ['-',[!Ref VpcName,!Sub "${AZId}"]]
+       
 
     VPCPeeringConnection:
         Type: AWS::EC2::VPCPeeringConnection
@@ -253,19 +229,6 @@ Resources:
           Architectures:
               - x86_64
           Role: !GetAtt LambdaEfsRole.Arn
-          # Policies:
-          #   - Statement:
-          #       - Sid: LambdaCrossAcctEFSPolicy
-          #         Effect: Allow
-          #         Action:
-          #           - "elasticfilesystem:ClientMount"
-          #           - "elasticfilesystem:ClientWrite"
-          #         Resource: [
-          #           !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:file-system/${EFSFileSystem}"                  
-          #         ]
-          #         Condition:
-          #             StringEquals:
-          #               "elasticfilesystem:AccessPointArn": !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:access-point/${EFSAccessPoint}"
           VpcConfig:
               SecurityGroupIds:
                 - !Ref LambdaSecurityGroup
@@ -275,9 +238,3 @@ Resources:
           FileSystemConfigs:
               - Arn: !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:access-point/${EFSAccessPoint}"
                 LocalMountPath: /mnt/lambda
-        # Events:
-        #     HelloWorld:
-        #     Type: Api
-        #     Properties:
-        #         Path: /src
-        #         Method: get          
