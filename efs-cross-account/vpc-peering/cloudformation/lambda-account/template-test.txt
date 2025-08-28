@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform:
+- AWS::LanguageExtensions
+- AWS::Serverless-2016-10-31
+Description: Test Serverless with LanguageExtensions
+Parameters:
+    VpcName:
+        Type: String
+        Default: MyVpc
+    VPCCidr:
+        Type: String
+        Default: 10.0.0.0/16
+    AZIds:
+        Type: CommaDelimitedList
+        Default: use1-az1,use1-az2
+
+Resources:
+  MyVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:
+        Ref: VPCCidr
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+      - Key: Name
+        Value:
+          Ref: VpcName
+
+  MySubnet:
+      Type: 'AWS::EC2::Subnet'
+      Properties:
+          VpcId: !Ref MyVpc
+          CidrBlock: !Select
+              - 1
+              - !Cidr
+                  - !Ref VPCCidr
+                  - 6
+                  - 8            
+          AvailabilityZoneId: !Select [ 0, !Ref AZIds ] 

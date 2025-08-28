@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 
+    - 'AWS::LanguageExtensions'
+Description: Creates an EFS and its VPC
+Parameters:
+    VpcName:
+        Type: String
+        Default: efs-x-acct-vpc-peering
+        Description: The name of the VPC.
+    VPCCidr:
+        Type: String
+        Default: 10.1.0.0/16
+        Description: The primary CIDR of this VPC. Subnets will be created from this CIDR.
+        AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{2})"
+    PeerAccountId:
+        Type: String
+        Description: The Targe Account Id.
+    PeerCidr:
+        Type: String
+        Default: 10.0.0.0/16
+        Description: The CIDR of the peered VPC. 
+        AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{2})"
+    PeerConnectionId:
+        Type: String
+        Default: ""
+        Description: The peering connection id.
+    AZIds:
+        Type: List<String>
+        Default: "use1-az1,use1-az2"
+        Description: The availability zone IDs to place the EFS.
+    PeerRequesterRole:
+        Type: String
+        Default: /aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess
+        Description: The cross acccount role (role path + name) that will make a VCP peering request. 
+
+Mappings:
+    AZToCidrMap:
+        AZToCidr:
+            "az1": 0
+            "az2": 1
+            "az3": 2
+            "az4": 3
+            "az5": 4
+            "az6": 5
+
+Conditions:
+    IsPeerConnectionIdNotEmpty: !Not [!Equals [!Ref PeerConnectionId,""]]
+
+Resources:
+    EFSVPC:
+        Type: AWS::EC2::VPC
+        Properties:
+            CidrBlock: !Ref VPCCidr
+            EnableDnsSupport: 'true'
+            EnableDnsHostnames: 'true'            
+            Tags: 
+                - Key: Name
+                  Value: 
+                    Ref: VpcName
+
+    EFSRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            Tags: 
+                - Key: Name
+                  Value: 
+                    !Join ['-',[Ref: VpcName,"rtb"]]
+            VpcId: !Ref EFSVPC
+
+    PeerRoute:
+      Type: AWS::EC2::Route
+      Condition: IsPeerConnectionIdNotEmpty
+      Properties:
+        RouteTableId:
+          Ref: EFSRouteTable
+        DestinationCidrBlock: !Ref PeerCidr
+        VpcPeeringConnectionId: !Ref PeerConnectionId
+
+    'Fn::ForEach::Subnets':
+      - AZId
+      - !Ref AZIds
+      - 'EFSSubnet&{AZId}':
+          Type: 'AWS::EC2::Subnet'
+          Properties:
+              VpcId: !Ref EFSVPC
+              CidrBlock: !Select
+                  - !FindInMap 
+                    - AZToCidrMap
+                    - AZToCidr
+                    - !Select [1, !Split ["-", !Sub "${AZId}"]]
+                  - !Cidr
+                      - !Ref VPCCidr
+                      - 6
+                      - 8            
+              AvailabilityZoneId: !Sub "${AZId}"
+              Tags: 
+                  - Key: Name
+                    Value: 
+                      !Join ['-',[!Ref VpcName,!Sub "${AZId}"]]
+
+        'EFSRtbSubAssoc&{AZId}':
+          Type: 'AWS::EC2::SubnetRouteTableAssociation'
+          Properties:
+              RouteTableId: !Ref EFSRouteTable
+              SubnetId: !Ref 
+                Fn::Sub: 
+                  - 'EFSSubnet${logicalId}'
+                  # &{AZId} is not working so need to remove
+                  - logicalId: !Join ["",!Split ["-", !Sub "${AZId}"]]
+
+
+        'EFSMountTarget&{AZId}':
+          Type: 'AWS::EFS::MountTarget'
+          Properties:
+              FileSystemId: !Ref EFSFileSystem
+              SubnetId: !Ref 
+                Fn::Sub: 
+                  - 'EFSSubnet${logicalId}'
+                  # &{AZId} is not working so need to remove
+                  - logicalId: !Join ["",!Split ["-", !Sub "${AZId}"]]      
+              SecurityGroups: 
+                - !Ref EFSSecurityGroup
+
+    EFSSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: "EFS Security Group"
+            VpcId: !Ref EFSVPC
+            SecurityGroupEgress:
+              - CidrIp: "0.0.0.0/0"
+                FromPort: 0
+                ToPort: 65535
+                IpProtocol: tcp
+            SecurityGroupIngress:
+              - CidrIp: "0.0.0.0/0"
+                FromPort: 0
+                ToPort: 65535
+                IpProtocol: tcp
+
+    EFSFileSystem:
+      Type: 'AWS::EFS::FileSystem'
+      DeletionPolicy: Delete
+      UpdateReplacePolicy: Retain
+      Properties:
+        FileSystemTags:
+          - Key: Name
+            Value: CrossAccountEFS
+        FileSystemPolicy:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - "elasticfilesystem:ClientMount"
+                - "elasticfilesystem:ClientWrite"
+              Principal:
+                  AWS: "*"
+              Condition:
+                  StringEquals:
+                    "aws:PrincipalArn": !Sub "arn:aws:iam::${PeerAccountId}:role/EfsXAcctLambda-Role" 
+                  Bool:
+                    "elasticfilesystem:AccessedViaMountTarget": True
+
+            - Effect: "Allow"
+              Action:
+                - "elasticfilesystem:DescribeMountTargets"
+              Principal:
+                  AWS: "*"
+              Condition:
+                  StringEquals:
+                    "aws:PrincipalArn": !Sub "arn:aws:iam::${PeerAccountId}:role${PeerRequesterRole}" 
+
+    EFSAccessPoint:
+        Type: 'AWS::EFS::AccessPoint'
+        Properties:
+          FileSystemId: !Ref EFSFileSystem
+          PosixUser:
+            Uid: "1001"
+            Gid: "1001"
+          RootDirectory:
+            CreationInfo:
+              OwnerGid: "1001"
+              OwnerUid: "1001"
+              Permissions: "0755"
+            Path: "/lambda"
+          AccessPointTags: 
+            - Key: Name
+              Value: 
+                !Join ['-',[!Ref VpcName,"ap"]]
+
+    PeeringRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Statement:
+            - Principal:
+                AWS: !Sub "arn:aws:iam::${PeerAccountId}:role${PeerRequesterRole}"
+              Action:
+                - 'sts:AssumeRole'
+              Effect: Allow
+        Path: /
+        Policies:
+          - PolicyName: CrossAcctVPCPeering-Policy
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action: 'ec2:AcceptVpcPeeringConnection'
+                  Resource: [
+                    !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc-peering-connection/*",
+                    !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${EFSVPC}" 
+                  ] 

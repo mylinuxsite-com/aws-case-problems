@@ -1,0 +1,283 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 
+    - 'AWS::Serverless-2016-10-31'
+    - 'AWS::LanguageExtensions'
+Description: Creates VPC for peering and Lambda function that will access an EFS from another account.
+Parameters:
+    VpcName:
+        Type: String
+        Default: efs-x-acct-vpc-peering
+        Description: The name of the VPC.
+    VPCCidr:
+        Type: String
+        Default: 10.0.0.0/16
+        Description: The primary CIDR of this VPC. Subnets will be created from this CIDR.
+        AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{2})"
+    AZIds:
+        Type: CommaDelimitedList
+        Default: "use1-az1,use1-az2" #See https://github.com/aws-cloudformation/cfn-lint/issues/4229
+        Description: The availability zone IDs to place the EFS. Max is 2.     
+    LogLevel:
+        Type: String
+        Default: INFO
+        AllowedValues : ["INFO", "DEBUG"]
+        Description: The Lambda logger level. 
+    PeerAccountId:
+        Type: String
+        Description: The Targe Account Id.
+    PeerVPCId:
+        Type: String
+        Description: The Targe VPC Id where peering will be requested.
+        AllowedPattern: "^(vpc-[0-9a-fA-F]{4,})$" 
+    PeerRoleArn:
+        Type: String
+    PeerCidr:
+        Type: String
+        Default: 10.1.0.0/16
+        Description: The CIDR of the peered VPC. 
+        AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{2})"        
+    EFSFileSystem:
+        Type: String
+        Description: The EFS Filesystem that the Lambda will mount.
+        AllowedPattern: "^(fs-[0-9a-fA-F]{4,})$"  
+    EFSAccessPoint:
+        Type: String
+        Description: The EF Access Point that the Lambda will mount.
+        AllowedPattern: "^(fsap-[0-9a-fA-F]{4,})$"  
+
+# Globals:
+#   Function:
+#     Timeout: 3
+#     MemorySize: 128
+#     LoggingConfig:
+#       LogFormat: JSON
+#     Environment:
+#       Variables:
+#         POWERTOOLS_SERVICE_NAME: efs-x-acct-vpc-peering
+#         POWERTOOLS_LOG_LEVEL: !Ref LogLevel
+
+Mappings:
+    AZToCidrMap:
+        AZToCidr:
+            "az1": 0
+            "az2": 1
+            "az3": 2
+            "az4": 3
+            "az5": 4
+            "az6": 5
+
+# Rules:
+#   MaxAzIds:
+#     RuleCondition: !Not [!Equals [!Ref AZIds,""]]
+#     Assertions:
+#       - Assert: !Equals 
+#           - Fn::Length: !Split [",",!Ref AZIds]
+#           - 2
+#         AssertDescription: 'AZIds must be = 2'    
+
+Resources:
+    LambdaVPC:
+        Type: AWS::EC2::VPC
+        Properties:
+            CidrBlock: !Ref VPCCidr
+            EnableDnsSupport: 'true'
+            EnableDnsHostnames: 'true'            
+            Tags: 
+                - Key: Name
+                  Value: 
+                    Ref: VpcName
+
+    LambdaRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            Tags: 
+                - Key: Name
+                  Value: 
+                    !Join ['-',[Ref: VpcName,"rtb"]]
+            VpcId: !Ref LambdaVPC
+
+    PeerRoute:
+      Type: AWS::EC2::Route
+      Properties:
+        RouteTableId:
+          Ref: LambdaRouteTable
+        DestinationCidrBlock: !Ref PeerCidr
+        VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+    LambdaSubneta:
+        Type: 'AWS::EC2::Subnet'
+        Properties:
+            VpcId: !Ref LambdaVPC
+            CidrBlock: !Select
+                - !FindInMap 
+                  - AZToCidrMap
+                  - AZToCidr
+                  - !Select [1, !Split ["-", !Select [0,!Ref AZIds]]]
+                - !Cidr
+                    - !Ref VPCCidr
+                    - 6
+                    - 8            
+            AvailabilityZoneId: !Select
+              - 0
+              - !Ref AZIds
+            Tags: 
+                - Key: Name
+                  Value: 
+                    !Join ['-',[!Ref VpcName,!Select [1, !Split ["-", !Select [0,!Ref AZIds]]]]]
+
+    LambdaRtbSubAssoca:
+        Type: 'AWS::EC2::SubnetRouteTableAssociation'
+        Properties:
+            RouteTableId: !Ref LambdaRouteTable
+            SubnetId: !Ref LambdaSubneta
+
+    LambdaSubnetb:
+        Type: 'AWS::EC2::Subnet'
+        Properties:
+            VpcId: !Ref LambdaVPC
+            CidrBlock: !Select
+                - !FindInMap 
+                  - AZToCidrMap
+                  - AZToCidr
+                  - !Select [1, !Split ["-", !Select [1,!Ref AZIds]]]                  
+                - !Cidr
+                    - !Ref VPCCidr
+                    - 6
+                    - 8            
+            AvailabilityZoneId: !Select
+              - 1
+              - !Ref AZIds
+            Tags: 
+                - Key: Name
+                  Value: 
+                    !Join ['-',[!Ref VpcName,!Select [1, !Split ["-", !Select [1,!Ref AZIds]]]]]
+
+    LambdaRtbSubAssocb:
+        Type: 'AWS::EC2::SubnetRouteTableAssociation'
+        Properties:
+            RouteTableId: !Ref LambdaRouteTable
+            SubnetId: !Ref LambdaSubnetb
+
+    # ForEach with SAM is not supported: https://github.com/aws/aws-sam-cli/issues/5647
+    # 'Fn::ForEach::Subnets':
+    #   - AZPrefix
+    #   - ['a','b'] # !Ref AZPrefixes
+    #   - 'LambdaSubnet${AZPrefix}':
+    #       Type: 'AWS::EC2::Subnet'
+    #       Properties:
+    #           VpcId: !Ref LambdaVPC
+    #           CidrBlock: !Select
+    #               - !FindInMap [AZToCidrMap,AZToCidr,!Sub '${AZPrefix}']
+    #               - !Cidr
+    #                   - !Ref VPCCidr
+    #                   - 6
+    #                   - 8            
+    #           AvailabilityZone: !Sub "${AWS::Region}${AZPrefix}"
+    #           Tags: 
+    #               - Key: Name
+    #                 Value: 
+    #                   !Join ['-',[!Ref VpcName,!Sub "${AZPrefix}"]]
+
+    #     'LambdaRtbSubAssoc${AZPrefix}':
+    #       Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    #       Properties:
+    #           RouteTableId: !Ref LambdaRouteTable
+    #           SubnetId: !GetAtt 
+    #               - Fn::Sub: 'LambdaSubnet${AZPrefix}'
+    #               - SubnetId            
+
+    VPCPeeringConnection:
+        Type: AWS::EC2::VPCPeeringConnection
+        Properties:
+          VpcId: !Ref LambdaVPC
+          PeerVpcId: !Ref PeerVPCId
+          PeerOwnerId: !Ref PeerAccountId
+          PeerRoleArn: !Ref PeerRoleArn
+
+    LambdaSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: "Lambda Security Group"
+            VpcId: !Ref LambdaVPC
+            SecurityGroupEgress:
+              - CidrIp: "0.0.0.0/0"
+                FromPort: 0
+                ToPort: 65535
+                IpProtocol: tcp
+            SecurityGroupIngress:
+              - CidrIp: "0.0.0.0/0"
+                FromPort: 0
+                ToPort: 65535
+                IpProtocol: tcp
+
+    LambdaEfsRole:
+      Type: 'AWS::IAM::Role'
+      Properties:    
+        RoleName: EfsXAcctLambda-Role
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        Path: /
+        Policies:
+          - PolicyName: EfsXAcctLambda-Policy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action: 
+                    - "elasticfilesystem:ClientMount"
+                    - "elasticfilesystem:ClientWrite"
+                  Resource: [
+                    !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:file-system/${EFSFileSystem}"                  
+                  ]
+                  Condition:
+                      StringEquals:
+                        "elasticfilesystem:AccessPointArn": !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:access-point/${EFSAccessPoint}"
+                   
+    LambdaEfsFunction:
+        Type: AWS::Serverless::Function
+        DependsOn: VPCPeeringConnection
+        Properties:
+          CodeUri: src/
+          Handler: app.lambda_handler
+          Runtime: python3.10
+          Architectures:
+              - x86_64
+          Role: !GetAtt LambdaEfsRole.Arn
+          # Policies:
+          #   - Statement:
+          #       - Sid: LambdaCrossAcctEFSPolicy
+          #         Effect: Allow
+          #         Action:
+          #           - "elasticfilesystem:ClientMount"
+          #           - "elasticfilesystem:ClientWrite"
+          #         Resource: [
+          #           !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:file-system/${EFSFileSystem}"                  
+          #         ]
+          #         Condition:
+          #             StringEquals:
+          #               "elasticfilesystem:AccessPointArn": !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:access-point/${EFSAccessPoint}"
+          VpcConfig:
+              SecurityGroupIds:
+                - !Ref LambdaSecurityGroup
+              SubnetIds:
+                - !Ref LambdaSubneta
+                - !Ref LambdaSubnetb
+          FileSystemConfigs:
+              - Arn: !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${PeerAccountId}:access-point/${EFSAccessPoint}"
+                LocalMountPath: /mnt/lambda
+        # Events:
+        #     HelloWorld:
+        #     Type: Api
+        #     Properties:
+        #         Path: /src
+        #         Method: get          
